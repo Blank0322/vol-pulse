@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.env
+
+# local artifacts
+*.session
+*.log
+*.db
+*.sqlite
+
+# notebooks
+.ipynb_checkpoints/
+.DS_Store
