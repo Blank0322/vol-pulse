@@ -1,21 +1,33 @@
 # Vol-Pulse
 
-A lightweight BTC options monitoring toolkit focused on **volatility pulses** (e.g. DVOL spikes) and the **volatility risk premium (VRP)**.
+BTC options monitoring + strategy-research scaffold.
 
-Goal: turn a messy "watch + react" workflow into a small, traceable pipeline.
+Focus: detect **panic-vol regimes** (spot drawdown + DVOL expansion), then evaluate candidate setup quality and risk bounds.
 
-## What it does
+## Scope
 
-- Pulls DVOL + spot + option chain (Deribit)
-- Computes VRP proxies and simple IV percentile/rank metrics
-- Tracks skew/term structure signals
-- Emits an "entry alert" when the market transitions from *slow bleed* → *panic + IV expansion*
+- **Execution side (monitoring)**: live signal detection + alert payload
+- **Research side (backtest)**: quick event-style sanity checks before going deeper
 
 ## Architecture
 
 ```text
-Deribit → Snapshot → Metrics → Signal Rules → Candidate Scan → Risk Checks → Alert
+Market Data -> Metrics (IVP/IVR, VRP proxy, skew, term) -> Signal Rules -> Candidate Scan -> Risk Checks -> Alert
+                                            |
+                                            +-> Backtest harness
 ```
+
+## Repo map
+
+- `vol_pulse/` core package
+  - `monitor.py` package entrypoint
+  - `main.py` monitor loop
+  - `opportunity_scanner.py` candidate ranking and structure diagnostics
+  - `risk_engine.py` notional / margin guardrails
+  - `backtest.py` minimal event-style backtest
+- `scripts/run_backtest.py` standalone backtest runner
+- `docs/STRATEGY.md` strategy note
+- `docs/BACKTEST.md` backtest assumptions and usage
 
 ## Quick start
 
@@ -25,6 +37,12 @@ pip install -r requirements.txt
 python -m vol_pulse.monitor --mock --verbose
 ```
 
-> Notes
-> - This repo is an engineering/analysis scaffold, not trading advice.
-> - Put API keys in `.env` (see `.env.example`).
+## Backtest quick run
+
+```bash
+python scripts/run_backtest.py
+```
+
+## Disclaimer
+
+For research / monitoring only. Not financial advice.
