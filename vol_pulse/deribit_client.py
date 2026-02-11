@@ -6,8 +6,14 @@ from typing import Any, Dict, List, Tuple
 
 import os
 
-import aiohttp
-from aiohttp import ClientError
+try:
+    import aiohttp
+    from aiohttp import ClientError
+except ModuleNotFoundError:  # allow mock-only runs without optional HTTP deps
+    aiohttp = None  # type: ignore[assignment]
+
+    class ClientError(Exception):
+        """Fallback error type when aiohttp is unavailable."""
 
 from .constants import BTC_INDEX_NAME, DERIBIT_BASE_URL, DVOL_SYMBOL
 
@@ -16,6 +22,13 @@ class DeribitRESTClient:
     def __init__(self) -> None:
         self.base_url = DERIBIT_BASE_URL
         self.proxy_url = self._build_proxy_url()
+
+    @staticmethod
+    def _ensure_http_client() -> None:
+        if aiohttp is None:
+            raise RuntimeError(
+                "aiohttp is required for live Deribit API calls. Install dependencies with: pip install -r requirements.txt"
+            )
 
     @staticmethod
     def _build_proxy_url() -> str | None:
@@ -35,11 +48,13 @@ class DeribitRESTClient:
             return data.get("result", {})
 
     async def get_index_price(self) -> float:
+        self._ensure_http_client()
         async with aiohttp.ClientSession(trust_env=True) as session:
             result = await self._get_with_retry(session, "public/get_index_price", {"index_name": BTC_INDEX_NAME})
             return float(result.get("index_price", 0.0))
 
     async def get_dvol(self) -> float:
+        self._ensure_http_client()
         async with aiohttp.ClientSession(trust_env=True) as session:
             data = await self._get_dvol_data(session, hours=6, resolution_min=3600)
             if not data:
@@ -47,6 +62,7 @@ class DeribitRESTClient:
             return float(data[-1][4])
 
     async def get_dvol_history(self, days: int) -> List[float]:
+        self._ensure_http_client()
         async with aiohttp.ClientSession(trust_env=True) as session:
             end_ts = int(time.time() * 1000)
             start_ts = end_ts - int(days) * 86400 * 1000
@@ -91,6 +107,7 @@ class DeribitRESTClient:
     async def get_option_chain(
         self, dte_range_days: Tuple[int, int] | None = None, option_type: str | None = None
     ) -> List[dict]:
+        self._ensure_http_client()
         async with aiohttp.ClientSession(trust_env=True) as session:
             instruments = await self._get_with_retry(
                 session,

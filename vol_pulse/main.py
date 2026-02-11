@@ -162,16 +162,21 @@ async def run_monitor(use_mock: bool, poll_interval: float, verbose: bool) -> No
             term_report = scanner.analyze_term_structure(options, near_days=7, far_days=30)
             term_hint = "7d" if term_report.signal == "near_term_pulse" else "14-30d"
 
+            ivp_value = metrics.ivp if metrics.ivp is not None else 0.0
+            ivr_value = metrics.ivr if metrics.ivr is not None else 0.0
+            skew_value = skew_report.skew if skew_report.skew is not None else 0.0
+            term_spread = term_report.iv_spread if term_report.iv_spread is not None else 0.0
+
             alert.send(
                 AlertMessage(
                     title="IV Pulse Entry",
                     body=(
-                        f"Spot {spot_price:.0f}, DVOL {dvol:.1f}, IVP {metrics.ivp:.1f}, IVR {metrics.ivr:.1f}\n"
+                        f"Spot {spot_price:.0f}, DVOL {dvol:.1f}, IVP {ivp_value:.1f}, IVR {ivr_value:.1f}\n"
                         f"Suggested: Sell {top.instrument_name} (delta {top.delta:.2f}, DTE {top.dte_days:.1f})\n"
                         f"Yield {top.annualized_yield:.2%}, Safety {top.safety_margin:.2%}, VRP {top.vrp:.2f}\n"
                         f"Max contracts {report.max_contracts:.2f} BTC, Margin shock {report.est_margin_shock:.0f} USD\n"
-                        f"Skew {skew_report.skew:.2%} ({skew_report.signal}), PricingError {skew_report.pricing_error}\n"
-                        f"TermSpread {term_report.iv_spread:.2%} ({term_report.signal}), Prefer {term_hint}"
+                        f"Skew {skew_value:.2%} ({skew_report.signal}), PricingError {skew_report.pricing_error}\n"
+                        f"TermSpread {term_spread:.2%} ({term_report.signal}), Prefer {term_hint}"
                     ),
                 )
             )

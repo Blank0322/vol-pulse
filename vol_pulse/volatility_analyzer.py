@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Deque, Iterable, List, Tuple
 
 import numpy as np
-from scipy.stats import percentileofscore
 
 
 @dataclass
@@ -61,7 +60,16 @@ class VolatilityAnalyzer:
     def _compute_ivp(self, current_dvol: float | None) -> float | None:
         if current_dvol is None or not self._dvol_history:
             return None
-        return float(percentileofscore(self._dvol_history, current_dvol, kind="rank"))
+
+        arr = np.sort(np.asarray(self._dvol_history, dtype=np.float64))
+        n = arr.size
+        left = int(np.searchsorted(arr, current_dvol, side="left"))
+        right = int(np.searchsorted(arr, current_dvol, side="right"))
+        if right == left:
+            rank = right
+        else:
+            rank = (left + 1 + right) / 2.0
+        return float(rank / n * 100.0)
 
     def _compute_dvol_slope(self) -> float | None:
         if len(self._dvol_points) < 2:
