@@ -25,9 +25,12 @@ Market Data -> Metrics (IVP/IVR, VRP proxy, skew, term) -> Signal Rules -> Candi
   - `opportunity_scanner.py` candidate ranking and structure diagnostics
   - `risk_engine.py` notional / margin guardrails
   - `backtest.py` minimal event-style backtest
+  - `vrp_regression.py` VRP regression + 2σ mispricing signal
+  - `hedge_control.py` dynamic hedge ratio + risk interrupt rules
 - `scripts/run_backtest.py` standalone backtest runner
 - `docs/STRATEGY.md` strategy note
 - `docs/BACKTEST.md` backtest assumptions and usage
+- `docs/ENGINE_SPEC.md` research-grade engine spec
 
 ## Quick start
 
