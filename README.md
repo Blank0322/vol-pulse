@@ -38,6 +38,8 @@ Market Data -> Metrics (IVP/IVR, VRP proxy, skew, term) -> Signal Rules -> Candi
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m vol_pulse.monitor --mock --verbose
+# one-cycle dry run
+python -m vol_pulse.monitor --mock --verbose --once
 ```
 
 ## Backtest quick run

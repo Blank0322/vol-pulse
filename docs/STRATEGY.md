@@ -16,9 +16,19 @@ When BTC sells off quickly and DVOL jumps, option premiums can temporarily overp
 - `spot_chg_1h = spot_t / spot_{t-1} - 1`
 - `dvol_chg_1h = dvol_t / dvol_{t-1} - 1`
 
-Entry trigger (baseline):
-- `spot_chg_1h <= -3%`
-- `dvol_chg_1h >= +10%`
+Entry trigger (current spec, all must hold):
+- `spot_chg_1h <= -2.5%`
+- `dvol_chg_1h >= +5%`
+- `IVP > 70` OR `IVR > 50` (based on 365-day DVOL history)
+
+Slow-bleed trap (block Sell Put scan this cycle):
+- `spot_chg_1h <= -2%`
+- `dvol_chg_1h <= 0%`
+
+Option scan universe:
+- DTE in `[14, 30]` days
+- Put only
+- `abs(delta) in [0.15, 0.20]`
 
 ## Risk controls
 

@@ -4,12 +4,15 @@ import asyncio
 import time
 from typing import Any, Dict, List, Tuple
 
+import json
 import os
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 try:
     import aiohttp
     from aiohttp import ClientError
-except ModuleNotFoundError:  # allow mock-only runs without optional HTTP deps
+except ModuleNotFoundError:  # optional async HTTP client
     aiohttp = None  # type: ignore[assignment]
 
     class ClientError(Exception):
@@ -25,10 +28,8 @@ class DeribitRESTClient:
 
     @staticmethod
     def _ensure_http_client() -> None:
-        if aiohttp is None:
-            raise RuntimeError(
-                "aiohttp is required for live Deribit API calls. Install dependencies with: pip install -r requirements.txt"
-            )
+        # kept for backward compatibility; live mode now supports both aiohttp and urllib fallback.
+        return None
 
     @staticmethod
     def _build_proxy_url() -> str | None:
@@ -40,21 +41,37 @@ class DeribitRESTClient:
         scheme = "http" if proxy_type == "http" else "socks5"
         return f"{scheme}://{host}:{port}"
 
-    async def _get(self, session: aiohttp.ClientSession, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _get(self, session: aiohttp.ClientSession | None, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{self.base_url}/{path}"
-        async with session.get(url, params=params, timeout=20, proxy=self.proxy_url) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
-            return data.get("result", {})
+        if aiohttp is not None and session is not None:
+            async with session.get(url, params=params, timeout=20, proxy=self.proxy_url) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+                return data.get("result", {})
+
+        # urllib fallback (no aiohttp dependency)
+        query = urlencode(params)
+        req = Request(f"{url}?{query}", headers={"User-Agent": "vol-pulse/1.0"})
+        with urlopen(req, timeout=20) as resp:  # nosec - outbound public API call
+            payload = json.loads(resp.read().decode("utf-8"))
+            return payload.get("result", {})
 
     async def get_index_price(self) -> float:
         self._ensure_http_client()
+        if aiohttp is None:
+            result = await self._get_with_retry(None, "public/get_index_price", {"index_name": BTC_INDEX_NAME})
+            return float(result.get("index_price", 0.0))
         async with aiohttp.ClientSession(trust_env=True) as session:
             result = await self._get_with_retry(session, "public/get_index_price", {"index_name": BTC_INDEX_NAME})
             return float(result.get("index_price", 0.0))
 
     async def get_dvol(self) -> float:
         self._ensure_http_client()
+        if aiohttp is None:
+            data = await self._get_dvol_data(None, hours=6, resolution_min=3600)
+            if not data:
+                return 0.0
+            return float(data[-1][4])
         async with aiohttp.ClientSession(trust_env=True) as session:
             data = await self._get_dvol_data(session, hours=6, resolution_min=3600)
             if not data:
@@ -63,23 +80,30 @@ class DeribitRESTClient:
 
     async def get_dvol_history(self, days: int) -> List[float]:
         self._ensure_http_client()
-        async with aiohttp.ClientSession(trust_env=True) as session:
-            end_ts = int(time.time() * 1000)
-            start_ts = end_ts - int(days) * 86400 * 1000
-            try:
+        end_ts = int(time.time() * 1000)
+        start_ts = end_ts - int(days) * 86400 * 1000
+        try:
+            if aiohttp is None:
                 result = await self._get(
-                    session,
+                    None,
                     "public/get_volatility_index_data",
                     self._build_dvol_params(start_ts=start_ts, end_ts=end_ts, resolution_min=86400),
                 )
-            except (asyncio.TimeoutError, ClientError):
-                return []
+            else:
+                async with aiohttp.ClientSession(trust_env=True) as session:
+                    result = await self._get(
+                        session,
+                        "public/get_volatility_index_data",
+                        self._build_dvol_params(start_ts=start_ts, end_ts=end_ts, resolution_min=86400),
+                    )
+        except (asyncio.TimeoutError, ClientError, Exception):
+            return []
 
-            data = result.get("data", [])
-            return [float(item[4]) for item in data if len(item) > 4]
+        data = result.get("data", [])
+        return [float(item[4]) for item in data if len(item) > 4]
 
     async def _get_dvol_data(
-        self, session: aiohttp.ClientSession, hours: int, resolution_min: int
+        self, session: aiohttp.ClientSession | None, hours: int, resolution_min: int
     ) -> List[Tuple[float, float, float, float, float]]:
         result = await self._get(
             session,
@@ -108,6 +132,16 @@ class DeribitRESTClient:
         self, dte_range_days: Tuple[int, int] | None = None, option_type: str | None = None
     ) -> List[dict]:
         self._ensure_http_client()
+        if aiohttp is None:
+            instruments = await self._get_with_retry(
+                None,
+                "public/get_instruments",
+                {"currency": "BTC", "kind": "option", "expired": "false"},
+            )
+            instrument_names = self._filter_instruments(instruments, dte_range_days, option_type)
+            quotes = await self._fetch_tickers(None, instrument_names)
+            return quotes
+
         async with aiohttp.ClientSession(trust_env=True) as session:
             instruments = await self._get_with_retry(
                 session,
@@ -118,7 +152,7 @@ class DeribitRESTClient:
             quotes = await self._fetch_tickers(session, instrument_names)
             return quotes
 
-    async def _fetch_tickers(self, session: aiohttp.ClientSession, names: List[str]) -> List[dict]:
+    async def _fetch_tickers(self, session: aiohttp.ClientSession | None, names: List[str]) -> List[dict]:
         sem = asyncio.Semaphore(5)
         results: List[dict] = []
 
@@ -161,7 +195,7 @@ class DeribitRESTClient:
         return names
 
     async def _get_with_retry(
-        self, session: aiohttp.ClientSession, path: str, params: Dict[str, Any]
+        self, session: aiohttp.ClientSession | None, path: str, params: Dict[str, Any]
     ) -> Dict[str, Any]:
         delay = 0.25
         for _ in range(3):
@@ -175,6 +209,9 @@ class DeribitRESTClient:
                         delay *= 2
                         continue
                     raise
+                await asyncio.sleep(delay)
+                delay *= 2
+            except Exception:
                 await asyncio.sleep(delay)
                 delay *= 2
         return {}
